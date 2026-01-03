@@ -18,7 +18,10 @@ set_target_properties(miniaudio PROPERTIES LINKER_LANGUAGE C)
 target_include_directories(miniaudio PUBLIC external/miniaudio)
 
 # pffft
-add_library(pffft STATIC external/pffft/pffft.c)
+add_library(pffft STATIC
+    external/pffft/pffft.c
+    external/pffft/pffft_common.c
+)
 set_target_properties(pffft PROPERTIES LINKER_LANGUAGE C)
 target_include_directories(pffft PUBLIC external/pffft)
 
@@ -42,7 +45,7 @@ file(GLOB_RECURSE SOURCES
 
 # Add executable
 qt_add_executable(${PROJECT_NAME}
-  ${SOURCES} ${EXTERNAL_SRC}
+  ${SOURCES} ${EXTERNAL_SRC} include/ui.hpp
 )
 
 qt_add_qml_module(${PROJECT_NAME}

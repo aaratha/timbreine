@@ -7,10 +7,30 @@ ApplicationWindow {
     visible: true
     color: "black"
 
-    Rectangle {
-        width: 100
-        height: 100
-        color: "red"
-        anchors.centerIn: parent
+    property int rectCount: 24
+
+    Row {
+        id: row
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 16
+        height: 80
+        spacing: 8
+
+        Repeater {
+            model: rectCount
+            delegate: Rectangle {
+                width: Math.max(20, (row.width - (rectCount - 1) * row.spacing) / rectCount)
+                height: row.height
+                color: "#e74c3c"
+                radius: 6
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: ui.rectangleClicked(index)
+                }
+            }
+        }
     }
 }

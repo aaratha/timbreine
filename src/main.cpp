@@ -1,5 +1,6 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 
 #include "audio.hpp"
 #include "ui.hpp"
@@ -11,9 +12,17 @@ int main(int argc, char *argv[]) {
     QQmlApplicationEngine engine;
 
     AnalysisCore analysisCore;
-    analysisCore.readFile(argv[1]); // Load audio file from command line argument
-    
+    if (argc > 1) {
+        analysisCore.readFile(argv[1]); // Load audio file from command line argument
+        analysisCore.binInput();
+        analysisCore.windowBins();
+        analysisCore.decomposeBins();
+        analysisCore.findSynthesisFeatures();
+    }
+
     AudioCore audioCore(analysisCore);
+    UiController uiController(&audioCore, &analysisCore);
+    engine.rootContext()->setContextProperty("ui", &uiController);
     
     engine.loadFromModule("MyApp", "MainView");
 

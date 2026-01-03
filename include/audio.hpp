@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -38,12 +39,20 @@ class AudioCore {
   std::vector<float> inputRaw;
   std::atomic<size_t> playhead{0};
 
+  std::atomic<size_t> binIndex{0};
+  std::vector<float> phaseAccumulators;
+  std::vector<float> noisePhaseAccumulators;
+  std::vector<float> noiseFrequencies;
+  size_t lastBinIndex{std::numeric_limits<size_t>::max()};
+
   static void dataCallback(ma_device *pDevice, void *pOutput,
                            const void * /*pInput*/, ma_uint32 frameCount);
 
 public:
   AudioCore(AnalysisCore &analysisCore);
   ~AudioCore();
+
+  void setBinIndex(size_t index);
 
   // Called per audio buffer
   void processAudio(float *out, ma_uint32 frameCount);
