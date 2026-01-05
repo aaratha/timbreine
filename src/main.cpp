@@ -15,9 +15,7 @@ int main(int argc, char *argv[]) {
     if (argc > 1) {
         analysisCore.readFile(argv[1]); // Load audio file from command line argument
         analysisCore.binInput();
-        analysisCore.windowBins();
         analysisCore.decomposeBins();
-        analysisCore.findSynthesisFeatures();
     }
 
     AudioCore audioCore(analysisCore);

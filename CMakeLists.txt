@@ -63,12 +63,6 @@ foreach(QML_FILE ${QML_SOURCES})
                    COPYONLY)
 endforeach()
 
-# copy example.wav into build directory
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/example.wav
-               ${CMAKE_CURRENT_BINARY_DIR}/example.wav
-               COPYONLY)
- 
-
 target_compile_definitions(pffft PRIVATE PFFFT_ENABLE_FLOAT)
 
 # Link Qt libraries

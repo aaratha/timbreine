@@ -7,7 +7,9 @@
 
 UiController::UiController(AudioCore *audioCore, AnalysisCore *analysisCore,
                            QObject *parent)
-    : QObject(parent), audioCore(audioCore), analysisCore(analysisCore) {}
+    : QObject(parent), audioCore(audioCore), analysisCore(analysisCore) {
+  emit binCountChanged();
+}
 
 void UiController::rectangleClicked(int index) {
   lastClickedIndex = index;
@@ -20,3 +22,10 @@ void UiController::rectangleClicked(int index) {
 }
 
 int UiController::lastClicked() const { return lastClickedIndex; }
+
+int UiController::binCount() const {
+  if (!analysisCore) {
+    return 0;
+  }
+  return static_cast<int>(analysisCore->getBinCount());
+}

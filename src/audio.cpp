@@ -1,9 +1,13 @@
 #include "audio.hpp"
 #include "globals.hpp"
 
+#include <chrono>
 #include <iostream>
 
-AudioCore::AudioCore(AnalysisCore &analysisCore) : analysisCore(analysisCore) {
+AudioCore::AudioCore(AnalysisCore &analysisCore)
+    : analysisCore(analysisCore),
+      rng(static_cast<unsigned>(
+          std::chrono::high_resolution_clock::now().time_since_epoch().count())) {
   if (audioInitialized)
     return;
 
@@ -13,8 +17,6 @@ AudioCore::AudioCore(AnalysisCore &analysisCore) : analysisCore(analysisCore) {
   deviceConfig.sampleRate = static_cast<ma_uint32>(DEVICE_SAMPLE_RATE);
   deviceConfig.dataCallback = AudioCore::dataCallback;
   deviceConfig.pUserData = this;
-
-  osc.sampleRate = DEVICE_SAMPLE_RATE;
 
   if (ma_device_init(NULL, &deviceConfig, &device) != MA_SUCCESS) {
     std::cerr << "ma_device_init failed\n";
@@ -40,14 +42,14 @@ AudioCore::~AudioCore() {
 }
 
 void AudioCore::setBinIndex(size_t index) {
-  const auto &bins = analysisCore.getBinFeatures();
-  if (bins.empty()) {
+  size_t binCount = analysisCore.getBinCount();
+  if (binCount == 0) {
     binIndex.store(0);
     return;
   }
 
-  if (index >= bins.size()) {
-    index = bins.size() - 1;
+  if (index >= binCount) {
+    index = binCount - 1;
   }
 
   binIndex.store(index);
@@ -65,31 +67,40 @@ void AudioCore::dataCallback(ma_device *pDevice, void *pOutput,
   core->processAudio(out, frameCount);
 }
 
+void AudioCore::prepareBinBuffer(size_t index, std::vector<float> &buffer,
+                                 float &gain) {
+  const auto &bin = analysisCore.getBin(index);
+  if (bin.empty()) {
+    buffer.clear();
+    gain = 1.0f;
+    return;
+  }
+
+  buffer.resize(bin.size());
+  std::uniform_int_distribution<size_t> dist(0, bin.size() - 1);
+  size_t offset = dist(rng);
+
+  for (size_t i = 0; i < bin.size(); ++i) {
+    buffer[i] = bin[(offset + i) % bin.size()];
+  }
+
+  float peak = 0.0f;
+  for (float sample : buffer) {
+    float absSample = std::abs(sample);
+    if (absSample > peak) {
+      peak = absSample;
+    }
+  }
+
+  gain = 1.0f;
+  if (peak > 0.0f) {
+    gain = maxOutputAmplitude / peak;
+  }
+}
+
 void AudioCore::processAudio(float *out, ma_uint32 frameCount) {
-  // for (ma_uint32 frame = 0; frame < frameCount; ++frame) {
-  // // Sample playback functionality
-  // if (!analysisCore.getInputRaw().empty()) {
-  //   // use playhead to track position in inputRaw
-  //   size_t idx = playhead.load();
-  //   size_t channels = static_cast<size_t>(DEVICE_CHANNELS);
-  //   size_t total = analysisCore.getInputRaw().size();
-  //   for (ma_uint32 ch = 0; ch < DEVICE_CHANNELS; ++ch) {
-  //     size_t sampleIndex = (idx + ch) % total;
-  //     *out++ = analysisCore.getInputRaw()[sampleIndex];
-  //   }
-  //   idx = (idx + channels) % total;
-  //   playhead.store(idx);
-  // } else {
-  //   // Generate a simple sine wave if no input file is loaded
-  //   float sample = 0.2f * osc.process();
-  //   for (ma_uint32 ch = 0; ch < DEVICE_CHANNELS; ++ch) {
-  //     *out++ = sample;
-  //   }
-  // }
-  // Reproduce sample bin based on rectangle clicked
-  // }
-  const auto &bins = analysisCore.getBinFeatures();
-  if (bins.empty()) {
+  size_t binCount = analysisCore.getBinCount();
+  if (binCount == 0) {
     for (ma_uint32 frame = 0; frame < frameCount; ++frame) {
       for (ma_uint32 ch = 0; ch < DEVICE_CHANNELS; ++ch) {
         *out++ = 0.0f;
@@ -98,65 +109,62 @@ void AudioCore::processAudio(float *out, ma_uint32 frameCount) {
     return;
   }
 
-  size_t currentBin = binIndex.load();
-  if (currentBin >= bins.size()) {
-    currentBin = 0;
+  size_t currentBinIndex = binIndex.load();
+  if (currentBinIndex >= binCount) {
+    currentBinIndex = 0;
   }
-  const auto &features = bins[currentBin];
-  const auto &freqs = features.peakFrequenciesHz; // dominant freqs
-  const auto &env = features.spectralEnvelope;    // single envelope per bin
-  size_t channels = DEVICE_CHANNELS;
 
-  if (currentBin != lastBinIndex || phaseAccumulators.size() != freqs.size()) {
-    phaseAccumulators.assign(freqs.size(), 0.0f);
-    noisePhaseAccumulators.assign(env.size(), 0.0f);
-    noiseFrequencies.resize(env.size());
-    if (!env.empty()) {
-      for (size_t i = 0; i < env.size(); ++i) {
-        float t = (static_cast<float>(i) + 0.5f) / env.size();
-        noiseFrequencies[i] = t * (DEVICE_SAMPLE_RATE / 2.0f);
+  if (currentBinIndex != lastSynthBinIndex || binBuffer.empty()) {
+    prepareBinBuffer(currentBinIndex, binBuffer, binGain);
+    binPlayhead = 0;
+    overlapSize = binBuffer.size() / 2;
+    nextBufferReady = false;
+    lastSynthBinIndex = currentBinIndex;
+  }
+
+  if (binBuffer.empty()) {
+    for (ma_uint32 frame = 0; frame < frameCount; ++frame) {
+      for (ma_uint32 ch = 0; ch < DEVICE_CHANNELS; ++ch) {
+        *out++ = 0.0f;
       }
     }
-    lastBinIndex = currentBin;
+    return;
   }
 
   for (ma_uint32 frame = 0; frame < frameCount; ++frame) {
+    if (!nextBufferReady && overlapSize > 0 &&
+        binPlayhead >= binBuffer.size() - overlapSize) {
+      prepareBinBuffer(currentBinIndex, nextBinBuffer, nextBinGain);
+      nextBufferReady = !nextBinBuffer.empty();
+    }
+
     float sample = 0.0f;
-    const float harmonicGain = 0.1f;
-    const float noiseGain = 0.02f;
-
-    // For each significant frequency, generate sine wave weighted by envelope
-    for (size_t i = 0; i < freqs.size(); ++i) {
-      float f = freqs[i]; // frequency in Hz
-
-      // Map frequency to envelope bin (assuming envelope = N/2+1 bins)
-      size_t envBin =
-        static_cast<size_t>(f / (DEVICE_SAMPLE_RATE / 2.0f) * env.size());
-      if (envBin >= env.size())
-        envBin = env.size() - 1;
-      float A = expf(env[envBin]); // amplitude from spectral envelope
-
-      // Track phase for continuity
-      float &phase = phaseAccumulators[i];
-      sample += harmonicGain * A * sinf(phase);
-      phase += 2.0f * M_PI * f / DEVICE_SAMPLE_RATE;
-      if (phase > 2.0f * M_PI)
-        phase -= 2.0f * M_PI;
+    if (nextBufferReady && overlapSize > 0 &&
+        binPlayhead >= binBuffer.size() - overlapSize) {
+      size_t x = binPlayhead - (binBuffer.size() - overlapSize);
+      float t = static_cast<float>(x) / overlapSize;
+      float fadeOut = 0.5f * (1.0f + cosf(M_PI * t));
+      float fadeIn = 1.0f - fadeOut;
+      sample = (binBuffer[binPlayhead] * binGain * fadeOut) +
+               (nextBinBuffer[x] * nextBinGain * fadeIn);
+    } else {
+      sample = binBuffer[binPlayhead] * binGain;
     }
 
-    // Add noise shaped by the spectral envelope
-    for (size_t i = 0; i < env.size(); ++i) {
-      float A = expf(env[i]);
-      float &phase = noisePhaseAccumulators[i];
-      float f = noiseFrequencies[i];
-      sample += noiseGain * A * sinf(phase);
-      phase += 2.0f * M_PI * f / DEVICE_SAMPLE_RATE;
-      if (phase > 2.0f * M_PI)
-        phase -= 2.0f * M_PI;
+    ++binPlayhead;
+    if (binPlayhead >= binBuffer.size()) {
+      if (nextBufferReady) {
+        binBuffer.swap(nextBinBuffer);
+        binGain = nextBinGain;
+        binPlayhead = overlapSize;
+        nextBufferReady = false;
+      } else {
+        binPlayhead = 0;
+      }
     }
 
-    // Write the sample to all output channels
-    for (ma_uint32 ch = 0; ch < channels; ++ch)
+    for (ma_uint32 ch = 0; ch < DEVICE_CHANNELS; ++ch) {
       *out++ = sample;
+    }
   }
 }

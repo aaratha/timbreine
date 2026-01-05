@@ -5,6 +5,67 @@
 
 #include <algorithm>
 
+void DSP::window(std::vector<float> &input, int size) {
+  // Apply Hann window
+  for (int n = 0; n < size; ++n) {
+    float w = 0.5f * (1 - cos(2 * M_PI * n / (size - 1)));
+    input[n] *= w; // Note: input is const, so this function does not modify it
+  }
+}
+
+void DSP::computeFFT(const std::vector<float> &input,
+                     std::vector<std::complex<float>> &output, int size) {
+
+  // Create PFFFT object
+  pffft::detail::PFFFT_Setup *pffft =
+      pffft_new_setup(size, pffft::detail::PFFFT_REAL);
+
+  if (!pffft) {
+    throw std::runtime_error("Failed to initialize PFFFT");
+  }
+
+  float *pffftOutput = new float[size]; // PFFFT output in interleaved format
+
+  // Perform real FFT
+  pffft_transform(pffft, input.data(), pffftOutput, nullptr,
+                  pffft::detail::PFFFT_FORWARD);
+
+  // Convert interleaved floats -> std::complex<float>
+  for (size_t k = 0; k < size; k++) {
+    float re = pffftOutput[2 * k + 0];
+    float im = pffftOutput[2 * k + 1];
+    output[k] = std::complex<float>(re, im);
+  }
+
+  // Clean up
+  pffft_destroy_setup(pffft);
+}
+
+void DSP::computeIFFT(const std::vector<std::complex<float>> &input,
+                      std::vector<float> &output, int size) {
+
+  // Prepare buffer for interleaved format (Re, Im)
+  std::vector<float> fftInterleaved(2 * size);
+  for (size_t k = 0; k < size; ++k) {
+    fftInterleaved[2 * k + 0] = input[k].real();
+    fftInterleaved[2 * k + 1] = input[k].imag();
+  }
+
+  // 4. Allocate output buffer
+  output.resize(size);
+
+  // Perform inverse FFT
+  pffft::detail::PFFFT_Setup *setup =
+      pffft_new_setup(size, pffft::detail::PFFFT_REAL);
+
+  pffft_transform_ordered(setup,
+                          fftInterleaved.data(), // input interleaved Re+Im
+                          output.data(),         // output time-domain
+                          nullptr, pffft::detail::PFFFT_BACKWARD);
+
+  pffft_destroy_setup(setup);
+}
+
 void DSP::computePS(const std::vector<float> &input,
                     std::vector<std::vector<float>> &frameOutputs,
                     std::vector<float> &psOutput, int frameSize) {
@@ -100,8 +161,7 @@ void DSP::computePeakFrequenciesHz(const std::vector<float> &input,
   size_t count = std::min(static_cast<size_t>(maxCount), peaks.size());
   output.reserve(count);
   for (size_t i = 0; i < count; ++i) {
-    float freqHz =
-        static_cast<float>(peaks[i].index) * sampleRate / fftSize;
+    float freqHz = static_cast<float>(peaks[i].index) * sampleRate / fftSize;
     output.push_back(freqHz);
   }
 }

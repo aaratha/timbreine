@@ -1,4 +1,6 @@
 #include <iostream>
+#include <chrono>
+#include <random>
 
 #include "analysis.hpp"
 #include "dsp.hpp"
@@ -42,7 +44,7 @@ void AnalysisCore::readFile(const std::string &filename) {
     std::cerr << "Warning: did not read all frames\n";
   }
 
-  inputBinSize = INPUT_BUFFER_SIZE; // buffer.size() / 24;
+  inputBinSize = INPUT_BIN_SIZE;
 
   // Downmix to mono for analysis
   if (decoder.outputChannels > 1) {
@@ -82,53 +84,92 @@ void AnalysisCore::binInput() {
       bin.resize(inputBinSize, 0.0f);
     }
 
-    binnedInput.push_back(bin);
+    bins.push_back(bin);
     startIdx += hopSize;
   }
 }
 
-void AnalysisCore::windowBins() {
-  for (auto &bin : binnedInput) {
-    size_t N = bin.size();
-    for (size_t n = 0; n < N; ++n) {
-      // Hann window
-      float w = 0.5f * (1.0f - cosf((2.0f * 3.14159265f * n) / (N - 1)));
-      bin[n] *= w;
-    }
-  }
-}
-
 void AnalysisCore::decomposeBins() {
-  for (const auto &bin : binnedInput) {
-    std::vector<std::vector<float>> frameSpectrums;
-    std::vector<float> powerSpectrum;
-    DSP::computePS(bin, frameSpectrums, powerSpectrum,
-                   static_cast<int>(bin.size()));
+  for (auto &bin : bins) {
+    // 1. Apply window
+    DSP::window(bin, bin.size());
 
-    // store overall bin PS and per-frame PS for flux later
-    binPS.push_back(powerSpectrum);
-    framePS.insert(framePS.end(), frameSpectrums.begin(), frameSpectrums.end());
+    // 2. Prepare FFT output buffer
+    std::vector<std::complex<float>> fftOutput(bin.size()); 
+
+    // 3. Compute FFT
+    DSP::computeFFT(bin, fftOutput, bin.size());
+
+
+    // 5. Store
+    binFFTs.push_back(std::move(fftOutput));
   }
 }
 
-void AnalysisCore::findSynthesisFeatures() {
-  binFeatures.clear();
-  binFeatures.reserve(binPS.size());
+void AnalysisCore::resynthesizeBin(size_t binIndex, std::vector<float> &output) {
+    if (bins.empty()) {
+        output.clear();
+        return;
+    }
 
-  for (const auto &binSpectrum : binPS) {
-    BinFeatures features;
+    if (binIndex >= bins.size()) {
+        binIndex = 0;
+    }
 
-    DSP::computePeakFrequenciesHz(
-        binSpectrum, features.peakFrequenciesHz,
-        static_cast<int>(DEVICE_SAMPLE_RATE));
-    DSP::computeSpectralEnv(binSpectrum, features.spectralEnvelope,
-                            static_cast<int>(DEVICE_SAMPLE_RATE));
+    if (binFFTs.empty() || binIndex >= binFFTs.size()) {
+        output = bins[binIndex];
+        return;
+    }
 
-    binFeatures.push_back(std::move(features));
-  }
+    const auto &spectrum = binFFTs[binIndex];
+    size_t N = spectrum.size();
+
+    // Extract magnitudes
+    std::vector<float> mag(N);
+    for (size_t k = 0; k < N; ++k) {
+        mag[k] = std::abs(spectrum[k]);
+    }
+
+    // Generate random phase
+    static std::mt19937 rng(
+        static_cast<unsigned>(std::chrono::high_resolution_clock::now()
+                                  .time_since_epoch()
+                                  .count()));
+    static std::uniform_real_distribution<float> phaseDist(0.f, 2.f * M_PI);
+
+    std::vector<std::complex<float>> newSpectrum(N);
+    for (size_t k = 0; k < N; ++k) {
+        float phi = phaseDist(rng);
+        newSpectrum[k] = std::complex<float>(mag[k] * std::cos(phi),
+                                             mag[k] * std::sin(phi));
+    }
+
+    DSP::computeIFFT(newSpectrum, output, N);
+    
+    // Normalize IFFT output
+    for (size_t i = 0; i < N; ++i)
+        output[i] /= static_cast<float>(N);
+
+    // apply synthesis window (Hann)
+    DSP::window(output, output.size());
 }
+
 
 std::vector<float> &AnalysisCore::getInputRaw() { return inputRaw; }
 const std::vector<BinFeatures> &AnalysisCore::getBinFeatures() const {
   return binFeatures;
+}
+
+size_t AnalysisCore::getBinIndex() { return binIndex; }
+
+void AnalysisCore::setBinIndex(size_t index) { binIndex = index; }
+
+size_t AnalysisCore::getBinCount() const { return bins.size(); }
+
+const std::vector<float> &AnalysisCore::getBin(size_t index) const {
+  static const std::vector<float> empty;
+  if (index >= bins.size()) {
+    return empty;
+  }
+  return bins[index];
 }

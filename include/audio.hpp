@@ -3,32 +3,15 @@
 #include <atomic>
 #include <cmath>
 #include <limits>
+#include <random>
 #include <string>
 #include <vector>
 
 #include "miniaudio.h"
 #include "analysis.hpp"
 
-struct Oscillator {
-  float phase;
-  float frequency;
-  float sampleRate;
-
-  Oscillator() : phase(0.0f), frequency(440.0f), sampleRate(48000.0f) {}
-
-  float process() {
-    float value = sinf(phase * 2.0f * 3.14159265f);
-    phase += frequency / sampleRate;
-    if (phase >= 1.0f)
-      phase -= 1.0f;
-    return value;
-  }
-};
-
 class AudioCore {
   AnalysisCore &analysisCore;
-
-  Oscillator osc;
 
   ma_device_config deviceConfig{};
   ma_device device{};
@@ -41,9 +24,20 @@ class AudioCore {
   std::vector<float> noisePhaseAccumulators;
   std::vector<float> noiseFrequencies;
   size_t lastBinIndex{std::numeric_limits<size_t>::max()};
+  std::vector<float> binBuffer;
+  std::vector<float> nextBinBuffer;
+  size_t binPlayhead{0};
+  size_t lastSynthBinIndex{std::numeric_limits<size_t>::max()};
+  size_t overlapSize{0};
+  bool nextBufferReady{false};
+  float binGain{1.0f};
+  float nextBinGain{1.0f};
+  float maxOutputAmplitude{0.8f};
+  std::mt19937 rng;
 
   static void dataCallback(ma_device *pDevice, void *pOutput,
                            const void * /*pInput*/, ma_uint32 frameCount);
+  void prepareBinBuffer(size_t index, std::vector<float> &buffer, float &gain);
 
 public:
   AudioCore(AnalysisCore &analysisCore);

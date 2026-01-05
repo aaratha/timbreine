@@ -1,8 +1,21 @@
 #pragma once
 
+#include <complex>
 #include <vector>
 
 namespace DSP {
+
+void window(std::vector<float> &input, int size);
+
+// Compute FFT of input samples (re + im)
+void computeFFT(const std::vector<float> &input,
+                std::vector<std::complex<float>> &output, int size);
+
+void computeIFFT(const std::vector<std::complex<float>> &input,
+                 std::vector<float> &output, int size);
+
+void computeRandomPhase(float *phaseOutput, int size);
+
 // Use STFT to compute power spectrum
 void computePS(const std::vector<float> &input,
                std::vector<std::vector<float>> &frameOutputs,
