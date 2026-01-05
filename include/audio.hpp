@@ -3,7 +3,6 @@
 #include <atomic>
 #include <cmath>
 #include <limits>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -20,9 +19,6 @@ class AudioCore {
   std::atomic<bool> callbackSeen{false};
 
   std::atomic<size_t> binIndex{0};
-  std::vector<float> phaseAccumulators;
-  std::vector<float> noisePhaseAccumulators;
-  std::vector<float> noiseFrequencies;
   size_t lastBinIndex{std::numeric_limits<size_t>::max()};
   std::vector<float> binBuffer;
   std::vector<float> nextBinBuffer;
@@ -33,7 +29,6 @@ class AudioCore {
   float binGain{1.0f};
   float nextBinGain{1.0f};
   float maxOutputAmplitude{0.8f};
-  std::mt19937 rng;
 
   static void dataCallback(ma_device *pDevice, void *pOutput,
                            const void * /*pInput*/, ma_uint32 frameCount);

@@ -1,13 +1,9 @@
 #include "audio.hpp"
 #include "globals.hpp"
 
-#include <chrono>
 #include <iostream>
 
-AudioCore::AudioCore(AnalysisCore &analysisCore)
-    : analysisCore(analysisCore),
-      rng(static_cast<unsigned>(
-          std::chrono::high_resolution_clock::now().time_since_epoch().count())) {
+AudioCore::AudioCore(AnalysisCore &analysisCore) : analysisCore(analysisCore) {
   if (audioInitialized)
     return;
 
@@ -69,19 +65,10 @@ void AudioCore::dataCallback(ma_device *pDevice, void *pOutput,
 
 void AudioCore::prepareBinBuffer(size_t index, std::vector<float> &buffer,
                                  float &gain) {
-  const auto &bin = analysisCore.getBin(index);
-  if (bin.empty()) {
-    buffer.clear();
+  analysisCore.resynthesizeBin(index, buffer);
+  if (buffer.empty()) {
     gain = 1.0f;
     return;
-  }
-
-  buffer.resize(bin.size());
-  std::uniform_int_distribution<size_t> dist(0, bin.size() - 1);
-  size_t offset = dist(rng);
-
-  for (size_t i = 0; i < bin.size(); ++i) {
-    buffer[i] = bin[(offset + i) % bin.size()];
   }
 
   float peak = 0.0f;

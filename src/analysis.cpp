@@ -1,5 +1,6 @@
-#include <iostream>
 #include <chrono>
+#include <cmath>
+#include <iostream>
 #include <random>
 
 #include "analysis.hpp"
@@ -67,7 +68,7 @@ void AnalysisCore::readFile(const std::string &filename) {
 }
 
 void AnalysisCore::binInput() {
-  size_t hopSize = inputBinSize / 4; // 75% overlap
+  size_t hopSize = inputBinSize / DECIMATION_FACTOR; // 75% overlap
   size_t startIdx = 0;
 
   // Goes until the end of inputRaw, avoids out-of-bounds
@@ -130,19 +131,40 @@ void AnalysisCore::resynthesizeBin(size_t binIndex, std::vector<float> &output) 
         mag[k] = std::abs(spectrum[k]);
     }
 
-    // Generate random phase
+    std::vector<std::complex<float>> newSpectrum(N);
+    constexpr float twoPi = 2.0f * static_cast<float>(M_PI);
+
+    if (binPhaseAccumulators.size() < binFFTs.size()) {
+        binPhaseAccumulators.resize(binFFTs.size());
+    }
+    if (binPhaseAccumulators[binIndex].size() != N) {
+        binPhaseAccumulators[binIndex].assign(N, 0.0f);
+    }
+
+#if RANDOM_PHASE
     static std::mt19937 rng(
         static_cast<unsigned>(std::chrono::high_resolution_clock::now()
                                   .time_since_epoch()
                                   .count()));
-    static std::uniform_real_distribution<float> phaseDist(0.f, 2.f * M_PI);
-
-    std::vector<std::complex<float>> newSpectrum(N);
+    static std::uniform_real_distribution<float> phaseDist(0.f, twoPi);
     for (size_t k = 0; k < N; ++k) {
         float phi = phaseDist(rng);
         newSpectrum[k] = std::complex<float>(mag[k] * std::cos(phi),
                                              mag[k] * std::sin(phi));
     }
+#else
+    for (size_t k = 0; k < N; ++k) {
+        float phi = binPhaseAccumulators[binIndex][k];
+        newSpectrum[k] = std::complex<float>(mag[k] * std::cos(phi),
+                                             mag[k] * std::sin(phi));
+        float phaseStep = twoPi * static_cast<float>(k) / static_cast<float>(N);
+        phi += phaseStep;
+        if (phi >= twoPi) {
+            phi -= twoPi;
+        }
+        binPhaseAccumulators[binIndex][k] = phi;
+    }
+#endif
 
     DSP::computeIFFT(newSpectrum, output, N);
     
@@ -151,7 +173,7 @@ void AnalysisCore::resynthesizeBin(size_t binIndex, std::vector<float> &output) 
         output[i] /= static_cast<float>(N);
 
     // apply synthesis window (Hann)
-    DSP::window(output, output.size());
+    //DSP::window(output, output.size());
 }
 
 

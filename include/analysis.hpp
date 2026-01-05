@@ -17,6 +17,8 @@ class AnalysisCore {
   std::vector<std::vector<std::complex<float>>> binFFTs;
   // store spectral features per bin
   std::vector<BinFeatures> binFeatures;
+  // store per-bin phase accumulators for deterministic resynthesis
+  std::vector<std::vector<float>> binPhaseAccumulators;
 
   size_t binIndex{0};
 

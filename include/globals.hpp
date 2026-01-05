@@ -4,4 +4,5 @@
 #define DEVICE_FORMAT ma_format_f32
 #define DEVICE_CHANNELS 2
 #define INPUT_BIN_SIZE 4096
-#define STFT_SIZE 1024
+#define RANDOM_PHASE false
+#define DECIMATION_FACTOR 2
