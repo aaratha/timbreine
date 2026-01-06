@@ -66,158 +66,176 @@ void DSP::computeIFFT(const std::vector<std::complex<float>> &input,
   pffft_destroy_setup(setup);
 }
 
-void DSP::computePS(const std::vector<float> &input,
-                    std::vector<std::vector<float>> &frameOutputs,
-                    std::vector<float> &psOutput, int frameSize) {
-  size_t hop = frameSize / 4; // 75% overlap
-  std::vector<float> window(frameSize);
-
-  // Create Hann window
-  for (size_t n = 0; n < frameSize; ++n)
-    window[n] = 0.5f * (1 - cos(2 * M_PI * n / (frameSize - 1)));
-
-  // Create PFFFT object
-  pffft::detail::PFFFT_Setup *pffft =
-      pffft_new_setup(frameSize, pffft::detail::PFFFT_REAL);
-
-  if (!pffft) {
-    throw std::runtime_error("Failed to initialize PFFFT");
+void DSP::computePowerSpectrum(const std::vector<std::complex<float>> &input,
+                               std::vector<float> &output, int size) {
+  output.resize(size);
+  for (int k = 0; k < size; ++k) {
+    float re = input[k].real();
+    float im = input[k].imag();
+    output[k] = re * re + im * im; // Power = Re^2
   }
-
-  // Temporary buffers
-  std::vector<float> fftIn(frameSize);
-  std::vector<float> fftOut(
-      frameSize); // PFFFT real output in interleaved format
-
-  // Prepare total power spectrum
-  psOutput.assign(frameSize / 2 + 1, 0.0f);
-  size_t numFrames = 0;
-
-  // Process overlapping frames
-  for (size_t start = 0; start + frameSize <= input.size(); start += hop) {
-    // Copy frame and apply window
-    for (size_t n = 0; n < frameSize; ++n)
-      fftIn[n] = input[start + n] * window[n];
-
-    // Perform real FFT
-    pffft_transform(pffft, fftIn.data(), fftOut.data(), nullptr,
-                    pffft::detail::PFFFT_FORWARD);
-
-    // Compute magnitude spectrum (first N/2+1 bins)
-    std::vector<float> mag(frameSize / 2 + 1);
-    mag[0] = std::abs(fftOut[0]); // DC
-    for (size_t k = 1; k < frameSize / 2; ++k) {
-      float re = fftOut[2 * k];
-      float im = fftOut[2 * k + 1];
-      mag[k] = std::sqrt(re * re + im * im);
-    }
-    mag[frameSize / 2] = std::abs(fftOut[1]); // Nyquist
-
-    // Store magnitude spectrum for this frame
-    frameOutputs.push_back(mag);
-
-    // Accumulate for total PS (sum of magnitudes squared)
-    for (size_t k = 0; k < mag.size(); ++k) {
-      psOutput[k] += mag[k] * mag[k];
-    }
-
-    numFrames++;
-  }
-
-  // Take average or sqrt to get amplitude spectrum per bin
-  for (size_t k = 0; k < psOutput.size(); ++k) {
-    psOutput[k] = std::sqrt(psOutput[k] / numFrames);
-  }
-
-  // Clean up
-  pffft_destroy_setup(pffft);
 }
 
-void DSP::computePeakFrequenciesHz(const std::vector<float> &input,
-                                   std::vector<float> &output, int sampleRate,
-                                   int maxCount) {
-  output.clear();
-  if (input.size() < 3 || maxCount <= 0)
-    return;
+void DSP::computeSpectralEnv(
+    const std::vector<float> &powerSpec, // |FFT|^2, size = fftSize/2 + 1
+    std::vector<float> &melEnv, int sampleRate, int fftSize, int nMelBands) {
+  const int nSpec = fftSize / 2 + 1;
+  melEnv.assign(nMelBands, 0.0f);
 
-  struct Peak {
-    float value;
-    size_t index;
+  // --- Hz <-> Mel ---
+  auto hzToMel = [](float f) {
+    return 2595.0f * std::log10(1.0f + f / 700.0f);
   };
-
-  std::vector<Peak> peaks;
-  peaks.reserve(input.size());
-
-  for (size_t n = 1; n + 1 < input.size(); ++n) {
-    if (input[n] > input[n - 1] && input[n] > input[n + 1]) {
-      peaks.push_back({input[n], n});
-    }
-  }
-
-  std::sort(peaks.begin(), peaks.end(),
-            [](const Peak &a, const Peak &b) { return a.value > b.value; });
-
-  size_t fftSize = (input.size() - 1) * 2;
-  size_t count = std::min(static_cast<size_t>(maxCount), peaks.size());
-  output.reserve(count);
-  for (size_t i = 0; i < count; ++i) {
-    float freqHz = static_cast<float>(peaks[i].index) * sampleRate / fftSize;
-    output.push_back(freqHz);
-  }
-}
-
-// input: power spectrum (length = N/2+1)
-// output: Mel spectral envelope (length = nMelBands)
-void DSP::computeSpectralEnv(const std::vector<float> &input,
-                             std::vector<float> &output, int sampleRate,
-                             int nMelBands) {
-  int nSpec = input.size();
-  output.assign(nMelBands, 0.0f);
-
-  // 1. Frequency range
-  float fMin = 0.0f;
-  float fMax = sampleRate / 2.0f;
-
-  // 2. Convert fMin/fMax to Mel scale
-  auto hzToMel = [](float f) { return 2595.0f * log10f(1.0f + f / 700.0f); };
   auto melToHz = [](float m) {
-    return 700.0f * (powf(10.0f, m / 2595.0f) - 1.0f);
+    return 700.0f * (std::pow(10.0f, m / 2595.0f) - 1.0f);
   };
 
-  float melMin = hzToMel(fMin);
-  float melMax = hzToMel(fMax);
+  const float fMin = 0.0f;
+  const float fMax = sampleRate * 0.5f;
 
-  // 3. Compute Mel bin edges
-  std::vector<float> melEdges(nMelBands + 2);
-  for (int i = 0; i < melEdges.size(); ++i)
-    melEdges[i] = melToHz(melMin + i * (melMax - melMin) / (nMelBands + 1));
+  const float melMin = hzToMel(fMin);
+  const float melMax = hzToMel(fMax);
 
-  // 4. Convert Mel edges to FFT bin indices
-  std::vector<int> binEdges(nMelBands + 2);
-  for (int i = 0; i < binEdges.size(); ++i)
-    binEdges[i] = std::min(
-        nSpec - 1, static_cast<int>(roundf(melEdges[i] / fMax * (nSpec - 1))));
+  // --- Mel band edges (Hz) ---
+  std::vector<float> melHz(nMelBands + 2);
+  for (int i = 0; i < nMelBands + 2; ++i) {
+    float mel = melMin + (melMax - melMin) * i / (nMelBands + 1);
+    melHz[i] = melToHz(mel);
+  }
 
-  // 5. Compute Mel band energies (triangular filter)
+  // --- Convert Hz -> FFT bin indices ---
+  std::vector<int> bins(nMelBands + 2);
+  for (int i = 0; i < nMelBands + 2; ++i) {
+    int b = static_cast<int>(std::floor(melHz[i] * fftSize / sampleRate));
+    bins[i] = std::clamp(b, 0, nSpec - 1);
+  }
+
+  // --- Apply triangular mel filters ---
   for (int m = 0; m < nMelBands; ++m) {
-    int left = binEdges[m];
-    int center = binEdges[m + 1];
-    int right = binEdges[m + 2];
+    int left = bins[m];
+    int center = bins[m + 1];
+    int right = bins[m + 2];
+
+    if (center <= left || right <= center)
+      continue; // avoid zero-width filters
 
     float energy = 0.0f;
+    float norm = 0.0f;
 
     // Rising slope
-    for (int k = left; k < center; ++k)
-      energy += input[k] * (k - left) / float(center - left);
+    for (int k = left; k < center; ++k) {
+      float w = (k - left) / float(center - left);
+      energy += powerSpec[k] * w;
+      norm += w;
+    }
 
     // Falling slope
-    for (int k = center; k < right; ++k)
-      energy += input[k] * (right - k) / float(right - center);
+    for (int k = center; k < right; ++k) {
+      float w = (right - k) / float(right - center);
+      energy += powerSpec[k] * w;
+      norm += w;
+    }
 
-    output[m] = energy;
+    // Normalize for equal-area filters
+    if (norm > 0.0f)
+      energy /= norm;
+
+    melEnv[m] = energy;
+  }
+}
+
+void DSP::computeMFCC(const std::vector<float> &input,
+                      std::vector<float> &output,
+                      int numCoeffs) // number of MFCCs to compute
+{
+  const int M = input.size(); // number of mel bands
+  output.resize(numCoeffs);
+
+  // --- Step 1: log compression ---
+  constexpr float eps = 1e-10f; // prevent log(0)
+  std::vector<float> logMel(M);
+  for (int m = 0; m < M; ++m)
+    logMel[m] = std::log(input[m] + eps);
+
+  // --- Step 2: precompute cosine table ---
+  // Optional: can also store as a class member to reuse every frame
+  std::vector<std::vector<float>> cosTable(numCoeffs, std::vector<float>(M));
+  for (int n = 0; n < numCoeffs; ++n)
+    for (int m = 0; m < M; ++m)
+      cosTable[n][m] = std::cos(M_PI * n * (m + 0.5f) / M);
+
+  // --- Step 3: DCT-II ---
+  for (int n = 0; n < numCoeffs; ++n) {
+    float sum = 0.0f;
+    for (int m = 0; m < M; ++m)
+      sum += logMel[m] * cosTable[n][m];
+
+    output[n] = sum;
   }
 
-  // Optional: log scale
-  for (auto &v : output)
-    v = logf(v + 1e-8f); // avoid log(0)
+  // --- Step 4: optional orthonormal scaling ---
+  // Many MFCC implementations scale like this:
+  // Useful for comparisons with other MFCCs
+  output[0] *= std::sqrt(1.0f / M);
+  for (int n = 1; n < numCoeffs; ++n)
+    output[n] *= std::sqrt(2.0f / M);
+}
+
+void DSP::computeCentroid(const std::vector<float> &input, int size,
+                          float &centroid) {
+  const int nSpec = size / 2 + 1;
+  float num = 0.0f;
+  float denom = 0.0f;
+  for (int k = 0; k < nSpec; k++) {
+    num += (k * DEVICE_SAMPLE_RATE / size) * input[k];
+    denom += input[k];
+  }
+  if (denom > 0.0f) {
+    centroid = num / denom;
+  } else {
+    centroid = 0.0f;
+  }
+}
+
+void DSP::computeFlux(const std::vector<float> &psCurr,
+                      const std::vector<float> &psPrev, int size, float &flux) {
+  const int nSpec = size / 2 + 1;
+  flux = 0.0f;
+  for (int k = 0; k < nSpec; k++) {
+    float diff = psCurr[k] - psPrev[k];
+    flux += diff * diff;
+  }
+  flux = std::sqrt(flux);
+}
+
+// Computes spectral roll-off frequency in Hz
+// ps: power or magnitude spectrum (length = size/2 + 1)
+// size: original FFT size
+// sampleRate: audio sample rate
+// threshold: fraction of total spectral energy to consider (0.85 = 85%)
+// rolloff: output frequency in Hz
+void DSP::computeRolloff(const std::vector<float> &ps, int size,
+                         float &rolloff) {
+  const int nSpec = size / 2 + 1; // unique FFT bins
+  float totalEnergy = 0.0f;
+
+  // Compute total spectral energy
+  for (int k = 0; k < nSpec; ++k)
+    totalEnergy += ps[k];
+
+  // Compute cumulative energy and find bin exceeding threshold
+  float cumulative = 0.0f;
+  int rollBin = 0;
+  float target = ROLLOFF_THRESHOLD * totalEnergy;
+
+  for (int k = 0; k < nSpec; ++k) {
+    cumulative += ps[k];
+    if (cumulative >= target) {
+      rollBin = k;
+      break;
+    }
+  }
+
+  // Convert bin to frequency in Hz
+  rolloff = (rollBin * float(DEVICE_SAMPLE_RATE)) / size;
 }

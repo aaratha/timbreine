@@ -3,11 +3,6 @@
 #include <vector>
 #include <complex>
 
-struct BinFeatures {
-  std::vector<float> peakFrequenciesHz;
-  std::vector<float> spectralEnvelope;
-};
-
 class AnalysisCore {
   std::vector<float> inputRaw;
   size_t inputBinSize;
@@ -15,10 +10,12 @@ class AnalysisCore {
   std::vector<std::vector<float>> bins;
   // store fft for each bin
   std::vector<std::vector<std::complex<float>>> binFFTs;
-  // store spectral features per bin
-  std::vector<BinFeatures> binFeatures;
+  std::vector<std::vector<float>> binPowerSpectra;
+  // per-bin: mfccs (12), centroid, flux, rolloff
+  std::vector<std::vector<float>> umapFeatures;
   // store per-bin phase accumulators for deterministic resynthesis
   std::vector<std::vector<float>> binPhaseAccumulators;
+
 
   size_t binIndex{0};
 
@@ -36,12 +33,11 @@ public:
 
   void resynthesizeBin(size_t binIndex, std::vector<float> &output);
 
-  // Find significant frequency components and spectral envelopes for synthesis
-  void findSynthesisFeatures();
+  // compute and store MFCCs, centroid, flux, rolloff for each bin
+  void computeUmapFeatures();
 
   size_t getBinIndex();
   std::vector<float> &getInputRaw();
-  const std::vector<BinFeatures> &getBinFeatures() const;
   size_t getBinCount() const;
   const std::vector<float> &getBin(size_t index) const;
 

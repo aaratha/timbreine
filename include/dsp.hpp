@@ -3,6 +3,8 @@
 #include <complex>
 #include <vector>
 
+// TODO: Refactor to take globals as parameters instead of using macros
+
 namespace DSP {
 
 void window(std::vector<float> &input, int size);
@@ -14,35 +16,31 @@ void computeFFT(const std::vector<float> &input,
 void computeIFFT(const std::vector<std::complex<float>> &input,
                  std::vector<float> &output, int size);
 
-void computeRandomPhase(float *phaseOutput, int size);
+// Compute power spectrum from FFT input
+void computePowerSpectrum(const std::vector<std::complex<float>> &input,
+                          std::vector<float> &output, int size);
 
-// Use STFT to compute power spectrum
-void computePS(const std::vector<float> &input,
-               std::vector<std::vector<float>> &frameOutputs,
-               std::vector<float> &psOutput, int frameSize);
-
-// Compute peak frequencies from a spectrum (Hz output)
-void computePeakFrequenciesHz(const std::vector<float> &input,
-                              std::vector<float> &output, int sampleRate,
-                              int maxCount = 10);
-
-// Compute spectral envelope (mel-scaled)
-void computeSpectralEnv(const std::vector<float> &input,
-                        std::vector<float> &output, int sampleRate,
-                        int nMelBands = 40);
+// input: Power spectrum (length = nSpec)
+// output: Mel-scale spectral envelope (length = nMelBands) - NOT LOG-SCALED YET
+void computeSpectralEnv(const std::vector<float> &powerSpec,
+                        std::vector<float> &melEnv, int sampleRate, int fftSize,
+                        int nMelBands);
 
 // Compute MFCCs from power spectrum
-void computeMFCC(const float *input, std::vector<float> &output, int size);
+// input: Mel-scale spectral envelope (length = nMelBands)
+void computeMFCC(const std::vector<float> &input, std::vector<float> &output,
+                 int size);
 
-// Compute centroid from input sample
-void computeCentroid(const float *input, int size, float &centroid);
+// Compute centroid from input power spectrum
+void computeCentroid(const std::vector<float> &input, int size,
+                     float &centroid);
 
-// Compute flux from input sample
-void computeFlux(const float *input, const float *prevInput, int size,
-                 float &flux);
+// Compute flux from current and previous power spectra
+void computeFlux(const std::vector<float> &psCurr,
+                 const std::vector<float> &psPrev, int size, float &flux);
 
-// Compute rolloff from input sample
-void computeRolloff(const float *input, int size, float &rolloff);
+// Compute rolloff from input power spectrum
+void computeRolloff(const std::vector<float> &ps, int size, float &rolloff);
 
 // Compute UMAP from MFCCs, centroid, flux, and rolloff
 void computeUMAP(const std::vector<std::vector<float>> &input,

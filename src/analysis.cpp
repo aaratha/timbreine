@@ -68,7 +68,7 @@ void AnalysisCore::readFile(const std::string &filename) {
 }
 
 void AnalysisCore::binInput() {
-  size_t hopSize = inputBinSize / DECIMATION_FACTOR; // 75% overlap
+  size_t hopSize = inputBinSize / BIN_DECIMATION_FACTOR; // 75% overlap
   size_t startIdx = 0;
 
   // Goes until the end of inputRaw, avoids out-of-bounds
@@ -178,9 +178,6 @@ void AnalysisCore::resynthesizeBin(size_t binIndex, std::vector<float> &output) 
 
 
 std::vector<float> &AnalysisCore::getInputRaw() { return inputRaw; }
-const std::vector<BinFeatures> &AnalysisCore::getBinFeatures() const {
-  return binFeatures;
-}
 
 size_t AnalysisCore::getBinIndex() { return binIndex; }
 

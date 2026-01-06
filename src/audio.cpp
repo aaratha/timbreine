@@ -71,6 +71,8 @@ void AudioCore::prepareBinBuffer(size_t index, std::vector<float> &buffer,
     return;
   }
 
+  gain = 1.0f;
+#if NORMALIZE_PEAK
   float peak = 0.0f;
   for (float sample : buffer) {
     float absSample = std::abs(sample);
@@ -79,10 +81,10 @@ void AudioCore::prepareBinBuffer(size_t index, std::vector<float> &buffer,
     }
   }
 
-  gain = 1.0f;
   if (peak > 0.0f) {
     gain = maxOutputAmplitude / peak;
   }
+#endif
 }
 
 void AudioCore::processAudio(float *out, ma_uint32 frameCount) {
