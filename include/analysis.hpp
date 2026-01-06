@@ -10,12 +10,10 @@ class AnalysisCore {
   std::vector<std::vector<float>> bins;
   // store fft for each bin
   std::vector<std::vector<std::complex<float>>> binFFTs;
-  std::vector<std::vector<float>> binPowerSpectra;
   // per-bin: mfccs (12), centroid, flux, rolloff
   std::vector<std::vector<float>> umapFeatures;
   // store per-bin phase accumulators for deterministic resynthesis
   std::vector<std::vector<float>> binPhaseAccumulators;
-
 
   size_t binIndex{0};
 

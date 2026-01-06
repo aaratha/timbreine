@@ -21,4 +21,4 @@ The project extends this idea by introducing physics-based interaction: sound fr
 - [miniaudio](https://miniaud.io/) — Cross-platform, single-header audio I/O and playback
 - [pffft](https://github.com/marton78/pffft) — Lightweight SIMD-optimized FFT library for real-time spectral analysis
 - [Qt Quick](https://doc.qt.io/qt-6/qtquick-index.html) — UI layer for real-time visualization and interaction
-- [umappp](https://github.com/libscran/umappp) — Header-only C++ implementation of UMAP for timbre embedding
+- [umappp](https://github.com/libscran/umappp) — C++ implementation of UMAP for timbre embedding

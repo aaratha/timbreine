@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(timbre VERSION 0.1 LANGUAGES C CXX)
+project(timbreine VERSION 0.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,7 +58,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(umappp)
 
-
 # ------------------------------------------------------------
 # Qt
 # ------------------------------------------------------------
@@ -69,14 +68,51 @@ qt_standard_project_setup()
 # ------------------------------------------------------------
 # Sources
 # ------------------------------------------------------------
-file(GLOB_RECURSE SOURCES
-    src/*.cpp
+set(CORE_SOURCES
+    src/analysis.cpp
+    src/audio.cpp
+    src/dsp.cpp
+)
+
+set(UI_SOURCES
+    src/ui.cpp
+)
+
+set(APP_SOURCES
+    src/main.cpp
+)
+
+add_library(timbreine_core STATIC
+    ${CORE_SOURCES}
+)
+
+target_include_directories(timbreine_core PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+    ${miniaudio_src_SOURCE_DIR}
+)
+
+target_link_libraries(timbreine_core PUBLIC
+    miniaudio
+    pffft
+    libscran::umappp
+)
+
+add_library(timbreine_ui STATIC
+    ${UI_SOURCES}
+    include/ui.hpp
+)
+
+target_include_directories(timbreine_ui PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(timbreine_ui PUBLIC
+    timbreine_core
+    Qt6::Core
 )
 
 qt_add_executable(${PROJECT_NAME}
-    ${SOURCES}
-    ${EXTERNAL_SRC}
-    include/ui.hpp
+    ${APP_SOURCES}
 )
 
 qt_add_qml_module(${PROJECT_NAME}
@@ -104,17 +140,20 @@ endforeach()
 # ------------------------------------------------------------
 # Includes + Linking
 # ------------------------------------------------------------
-target_include_directories(${PROJECT_NAME} PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-)
-
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
     Qt6::Quick
     Qt6::Core
     Qt6::Gui
     Qt6::Qml
-    miniaudio
-    pffft
-    libscran::umappp
+    timbreine_core
+    timbreine_ui
 )
+
+# ------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

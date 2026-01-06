@@ -177,6 +177,51 @@ void AnalysisCore::resynthesizeBin(size_t binIndex, std::vector<float> &output) 
 }
 
 
+void AnalysisCore::computeUmapFeatures() {
+  // 1. compute power spectra
+  // 2. compute stft (2 frames, decimation factor 2)
+  // 3. compute mfccs (12), centroid, flux, rolloff
+  for (size_t i = 0; i < binFFTs.size(); ++i) {
+    const auto &spectrum = binFFTs[i];
+    size_t N = spectrum.size();
+
+    // Compute power spectrum
+    std::vector<float> powerSpec;
+    DSP::computePowerSpectrum(spectrum, powerSpec, N);
+
+    // Compute mel-scale spectral envelope
+    std::vector<float> melEnv;
+    DSP::computeSpectralEnv(powerSpec, melEnv, DEVICE_SAMPLE_RATE, N, 40);
+
+    //  Compute MFCCs
+    std::vector<float> mfccs;
+    DSP::computeMFCC(melEnv, mfccs, MFCC_COEFF_COUNT);
+
+    // Compute centroid
+    float centroid = 0.0f;
+    DSP::computeCentroid(powerSpec, N, DEVICE_SAMPLE_RATE, centroid);
+
+    // Compute STFT
+
+    // Compute Flux
+    float flux = 0.0f;
+    
+    // 6. Compute rolloff
+    float rolloff = 0.0f;
+    DSP::computeRolloff(powerSpec, N, DEVICE_SAMPLE_RATE, ROLLOFF_THRESHOLD,
+                        rolloff);
+
+    // Store features
+    std::vector<float> features;
+    features.insert(features.end(), mfccs.begin(), mfccs.end());
+    features.push_back(centroid);
+    features.push_back(flux);
+    features.push_back(rolloff);
+
+    umapFeatures.push_back(std::move(features));
+  }
+}  
+
 std::vector<float> &AnalysisCore::getInputRaw() { return inputRaw; }
 
 size_t AnalysisCore::getBinIndex() { return binIndex; }
