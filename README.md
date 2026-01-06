@@ -4,9 +4,9 @@ A physics-driven timbre exploration tool that resynthesizes audio fragments and 
 
 This project is inspired by [Minuit Solstice](https://minuit.am/), a novel synthesizer VST that uses spectral analysis and timbre-based organization to extend and resynthesize small audio fragments from a user-provided sound file.
 
-Audio is decomposed into short spectral frames, analyzed for timbral features, and embedded into a 2D timbre space where nearby points correspond to perceptually similar sounds. These fragments can be continuously extended and resynthesized, allowing navigation through timbre rather than time.
+Audio is decomposed into short spectral frames, analyzed for timbral features, and embedded into a 2D timbre space where nearby points correspond to perceptually similar sounds. These fragments can be continuously extended and resynthesized, allowing navigation through timbre.
 
-The project extends this idea by introducing physics-based interaction: sound fragments behave as objects within simulated fields and forces, enabling dynamic, emergent playback behaviors driven by motion and interaction within the timbre map.
+The project extends this idea by introducing physics-based interaction: sound fragments are chosen for playback by objects within simulated fields and forces, enabling dynamic, emergent playback behaviors driven by motion and interaction within the timbre map.
 
 ## Features
 
