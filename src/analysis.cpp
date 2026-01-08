@@ -285,21 +285,66 @@ void AnalysisCore::computeVoronoiEdges() {
   // ------------------------------------------------------------
   // 4. Extract edges (graph)
   // ------------------------------------------------------------
-  voronoiEdges.clear(); // you define this
+  voronoiEdges.clear();
+  voronoiCells.clear();
 
   const jcv_site *sites = jcv_diagram_get_sites(&diagram);
   for (int i = 0; i < diagram.numsites; ++i) {
     const jcv_site *site = &sites[i];
 
+    std::vector<jcv_point> cellPoints;
     for (const jcv_graphedge *e = site->edges; e; e = e->next) {
-      if (!e->neighbor)
-        continue;
-
       // Line segment
-      VoronoiEdge edge = VoronoiEdge{e->pos[0].x, e->pos[0].y, e->pos[1].x, e->pos[1].y};
+      VoronoiEdge edge = VoronoiEdge{e->pos[0].x, e->pos[0].y, e->pos[1].x,
+                                     e->pos[1].y, site->index};
 
       voronoiEdges.emplace_back(edge);
+
+      cellPoints.push_back(e->pos[0]);
+      cellPoints.push_back(e->pos[1]);
     }
+
+    if (cellPoints.empty()) {
+      continue;
+    }
+
+    std::vector<jcv_point> uniquePoints;
+    uniquePoints.reserve(cellPoints.size());
+    const float epsilon = 1e-5f;
+    for (const auto &p : cellPoints) {
+      bool exists = false;
+      for (const auto &q : uniquePoints) {
+        if (std::abs(p.x - q.x) < epsilon && std::abs(p.y - q.y) < epsilon) {
+          exists = true;
+          break;
+        }
+      }
+      if (!exists) {
+        uniquePoints.push_back(p);
+      }
+    }
+
+    if (uniquePoints.size() < 3) {
+      continue;
+    }
+
+    std::sort(uniquePoints.begin(), uniquePoints.end(),
+              [&](const jcv_point &a, const jcv_point &b) {
+                const float angleA =
+                    std::atan2(a.y - site->p.y, a.x - site->p.x);
+                const float angleB =
+                    std::atan2(b.y - site->p.y, b.x - site->p.x);
+                return angleA < angleB;
+              });
+
+    VoronoiCell cell;
+    cell.site = site->index;
+    cell.coords.reserve(uniquePoints.size() * 2);
+    for (const auto &p : uniquePoints) {
+      cell.coords.push_back(static_cast<float>(p.x));
+      cell.coords.push_back(static_cast<float>(p.y));
+    }
+    voronoiCells.push_back(std::move(cell));
   }
 
   // ------------------------------------------------------------
@@ -334,4 +379,8 @@ const std::vector<float> &AnalysisCore::getBinTimbreY() const {
 
 const std::vector<VoronoiEdge> &AnalysisCore::getVoronoiEdges() const {
   return voronoiEdges;
+}
+
+const std::vector<VoronoiCell> &AnalysisCore::getVoronoiCells() const {
+  return voronoiCells;
 }

@@ -8,6 +8,12 @@ struct VoronoiEdge {
   float y1;
   float x2;
   float y2;
+  int site;
+};
+
+struct VoronoiCell {
+  int site;
+  std::vector<float> coords;
 };
 
 class AnalysisCore {
@@ -26,6 +32,7 @@ class AnalysisCore {
   std::vector<float> binTimbreY;
   // Voronoi diagram data for timbre map
   std::vector<VoronoiEdge> voronoiEdges;
+  std::vector<VoronoiCell> voronoiCells;
 
   size_t binIndex{0};
 
@@ -60,6 +67,7 @@ public:
   const std::vector<float> &getBinTimbreY() const;
   const std::vector<float> &getVoronoiCoords() const;
   const std::vector<VoronoiEdge> &getVoronoiEdges() const;
+  const std::vector<VoronoiCell> &getVoronoiCells() const;
 
   void setBinIndex(size_t index);
 };

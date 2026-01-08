@@ -1,7 +1,9 @@
 import QtQuick 6.4
 import QtQuick.Controls 6.4
+import MyApp 1.0
 
 ApplicationWindow {
+    id: root
     width: 640
     height: 480
     visible: true
@@ -10,8 +12,19 @@ ApplicationWindow {
     property int rectCount: Math.max(1, ui ? ui.binCount : 1)
     property int minRectWidth: 8
     property int activeIndex: -1
-    property int pointSize: 6
     property int plotPadding: 16
+    property bool showDots: false
+    property bool showVoronoi: true
+
+    Connections {
+        target: ui
+        function onBinCountChanged() {
+            if (root.activeIndex < 0 && ui && ui.binCount > 0) {
+                root.activeIndex = 0
+                ui.rectangleClicked(0)
+            }
+        }
+    }
 
     Item {
         id: binStrip
@@ -41,7 +54,7 @@ ApplicationWindow {
 
         MouseArea {
             anchors.fill: parent
-            hoverEnabled: false
+            hoverEnabled: true
 
             function updateIndex(xPos) {
                 var cell = row.cellWidth + row.spacing
@@ -71,11 +84,20 @@ ApplicationWindow {
         border.color: "#2c3e50"
         radius: 8
 
+        VoronoiEdges {
+            anchors.fill: parent
+            padding: plotPadding
+            edges: ui ? ui.voronoiEdges : []
+            cells: ui ? ui.voronoiCells : []
+            activeIndex: root.activeIndex
+            visible: showVoronoi
+        }
+
         Repeater {
-            model: ui ? ui.umapPoints : []
+            model: showDots && ui ? ui.umapPoints : []
             delegate: Item {
-                width: pointSize
-                height: pointSize
+                width: 6
+                height: 6
 
                 readonly property real xNorm: modelData.x
                 readonly property real yNorm: modelData.y
@@ -96,25 +118,17 @@ ApplicationWindow {
             hoverEnabled: false
 
             function updateIndex(xPos, yPos) {
-                if (!ui || !ui.umapPoints || ui.umapPoints.length === 0) {
+                if (!ui) {
                     return
                 }
-                var bestIndex = -1
-                var bestDist = 1e9
                 var w = plotArea.width - 2 * plotPadding
                 var h = plotArea.height - 2 * plotPadding
-                for (var i = 0; i < ui.umapPoints.length; ++i) {
-                    var p = ui.umapPoints[i]
-                    var px = plotPadding + p.x * w
-                    var py = plotPadding + (1 - p.y) * h
-                    var dx = xPos - px
-                    var dy = yPos - py
-                    var d2 = dx * dx + dy * dy
-                    if (d2 < bestDist) {
-                        bestDist = d2
-                        bestIndex = p.index
-                    }
+                if (w <= 0 || h <= 0) {
+                    return
                 }
+                var nx = (xPos - plotPadding) / w
+                var ny = 1 - (yPos - plotPadding) / h
+                var bestIndex = ui.cellIndexAt(nx, ny)
                 if (bestIndex >= 0 && activeIndex !== bestIndex) {
                     activeIndex = bestIndex
                     ui.rectangleClicked(bestIndex)
@@ -122,7 +136,26 @@ ApplicationWindow {
             }
 
             onPressed: function(mouse) { updateIndex(mouse.x, mouse.y) }
-            onPositionChanged: function(mouse) { if (pressed) updateIndex(mouse.x, mouse.y) }
+            onPositionChanged: function(mouse) { updateIndex(mouse.x, mouse.y) }
+        }
+    }
+
+    Row {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        spacing: 12
+
+        CheckBox {
+            text: "Voronoi"
+            checked: showVoronoi
+            onToggled: showVoronoi = checked
+        }
+
+        CheckBox {
+            text: "Dots"
+            checked: showDots
+            onToggled: showDots = checked
         }
     }
 }

@@ -122,6 +122,7 @@ target_include_directories(timbreine_ui PUBLIC
 target_link_libraries(timbreine_ui PUBLIC
     timbreine_core
     Qt6::Core
+    Qt6::Quick
 )
 
 qt_add_executable(${PROJECT_NAME}
@@ -131,6 +132,7 @@ qt_add_executable(${PROJECT_NAME}
 qt_add_qml_module(${PROJECT_NAME}
     URI MyApp
     SOURCES
+        include/ui.hpp
     QML_FILES
         qml/MainView.qml
 )
